@@ -21,15 +21,19 @@ from PIL import Image, ExifTags # these are needed for getting exif data from im
 #####################################################
 # these variables are constants
 #####################################################
-PIC_DIR = '/home/pi/pi3d_demos/textures' #'textures'
+PIC_DIR = '/home/pi/Pictures' #'textures'
 FPS = 20
 FIT = True
 EDGE_ALPHA = 0.0 # see background colour at edge. 1.0 would show reflection of image
-BACKGROUND = (0.2, 0.2, 0.2, 1.0)
+BACKGROUND = (0, 0, 0, 1)
 RESHUFFLE_NUM = 5 # times through before reshuffling
 FONT_FILE = '/home/pi/pi3d_demos/fonts/NotoSans-Regular.ttf'
 CODEPOINTS = '1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ., _-/' # limit to 49 ie 7x7 grid_size
-USE_MQTT = True
+USE_MQTT = False
+CHKNUM = 30    # number of picture between re-loading file list
+INTERACTIVE = False # set true to run without keyboard input.
+SHOWTEXT = False # set tre to show text overlay.
+
 #####################################################
 # these variables can be altered using mqtt messaging
 #####################################################
@@ -171,7 +175,9 @@ slide = pi3d.Sprite(camera=CAMERA, w=DISPLAY.width, h=DISPLAY.height, z=5.0)
 slide.set_shader(shader)
 slide.unif[47] = EDGE_ALPHA
 
-kbd = pi3d.Keyboard()
+#inserted BME
+if INTERACTIVE:
+  kbd = pi3d.Keyboard()
 
 # images in iFiles list
 nexttm = 0.0
@@ -204,6 +210,12 @@ while DISPLAY.loop_running():
       sfg = None
       while sfg is None: # keep going through until a usable picture is found TODO break out how?
         pic_num = next_pic_num
+
+        #reload filelist after CHKNUM pictures shown
+        if (pic_num % CHKNUM) == 0: # this will shuffle as well
+          iFiles, nFi = get_files()
+          pic_num = pic_num % nFi # just in case list is severly shortened
+
         sfg = tex_load(iFiles[pic_num])
         next_pic_num += 1
         if next_pic_num >= nFi:
@@ -228,40 +240,48 @@ while DISPLAY.loop_running():
       slide.unif[os1] = (wh_rat - 1.0) * 0.5
       slide.unif[os2] = 0.0
       # set the file name as the description
-      textblock.set_text(text_format="{}".format(tidy_name(iFiles[pic_num])))
-      text.regen()
+      if SHOWTEXT:
+        textblock.set_text(text_format="{}".format(tidy_name(iFiles[pic_num])))
+        text.regen()
 
     if a < 1.0:
       a += delta_alpha
       slide.unif[44] = a
-      # this sets alpha for the TextBlock from 0 to 1 then back to 0
-      textblock.colouring.set_colour(alpha=(1.0 - abs(1.0 - 2.0 * a)))
-      text.regen()
+      if SHOWTEXT:
+        # this sets alpha for the TextBlock from 0 to 1 then back to 0
+        textblock.colouring.set_colour(alpha=(1.0 - abs(1.0 - 2.0 * a)))
+        text.regen()
 
     slide.draw()
 
   else:
-    textblock.set_text("NO IMAGES SELECTED")
-    textblock.colouring.set_colour(alpha=1.0)
-    text.regen()
+    if SHOWTEXT:
+      textblock.set_text("NO IMAGES SELECTED")
+      textblock.colouring.set_colour(alpha=1.0)
+      text.regen()
+    else:
+      print("NO IMAGES SELECTED")
 
-  text.draw()
 
-  k = kbd.read()
-  if k != -1:
-    nexttm = time.time() - 1.0
-  if k==27 or quit: #ESC
-    break
-  if k==ord(' '):
-    paused = not paused
-  if k==ord('s'): # go back a picture
-    next_pic_num -= 2
-    if next_pic_num < -1:
-      next_pic_num = -1
+  if SHOWTEXT:
+    text.draw()
+
+  if INTERACTIVE:
+    k = kbd.read()
+    if k != -1:
+      nexttm = time.time() - 1.0
+    if k==27 or quit: #ESC
+      kbd.close()
+      break
+    if k==ord(' '):
+      paused = not paused
+    if k==ord('s'): # go back a picture
+      next_pic_num -= 2
+      if next_pic_num < -1:
+        next_pic_num = -1
 
 try:
   client.loop_stop()
 except Exception as e:
-  print("this was going to fail if previous try failed!")
-kbd.close()
+  print("This was going to fail if previous try failed!")
 DISPLAY.destroy()
