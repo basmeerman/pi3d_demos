@@ -50,8 +50,16 @@ delta_alpha = 1.0 / (FPS * fade_time) # delta alpha
 #####################################################
 # some functions to tidy subsequent code
 #####################################################
-def tex_load(fname):
+def tex_load(fname, orientation):
   try:
+    im = Image.open(fname)
+    if orientation > 4: # this is a rotated image)
+      im = im.transpose(Image.ROTATE_270)
+    if orientation in [2, 4, 5, 8]:
+      im = im.transpose(Image.FLIP_LEFT_RIGHT)
+    if orientation in [4, 8]:
+      im = im.transpose(Image.FLIP_TOP_BOTTOM)
+
     tex = pi3d.Texture(fname, blend=True, m_repeat=True)
   except Exception as e:
     print('''Couldn't load file {}
@@ -79,19 +87,30 @@ def get_files(dt_from=None, dt_to=None):
           if ext in extensions and not '.AppleDouble' in root and not filename.startswith('.'):
               file_path_name = os.path.join(root, filename)
               include_flag = True
-              if EXIF_DATID is not None and (dt_from is not None or dt_to is not None):
+              orientation = 1 # this is default - unrotated
+              if EXIF_DATID is not None and EXIF_ORIENTATION is not None:
                 try:
                   im = Image.open(file_path_name) # lazy operation so shouldn't load (better test though)
                   #print(filename, end="")
-                  dt = time.mktime(
-                        time.strptime(im._getexif()[EXIF_DATID], '%Y:%m:%d %H:%M:%S'))
+                  exif_data = im._getexif()
+                  print('orientation is {}'.format(exif_data[EXIF_ORIENTATION]))
+                  dt = time.mktime(time.strptime(exif_data[EXIF_DATID], '%Y:%m:%d %H:%M:%S'))
+                  orientation = int(exif_data[EXIF_ORIENTATION])
+		  #1 = Horizontal (normal)
+		  #2 = Mirror horizontal
+		  #3 = Rotate 180
+		  #4 = Mirror vertical
+		  #5 = Mirror horizontal and rotate 270 CW
+		  #6 = Rotate 90 CW
+		  #7 = Mirror horizontal and rotate 90 CW
+		  #8 = Rotate 270 CW
                 except Exception as e: # NB should really check error here but it's almost certainly due to lack of exif data
                   print(e)
                   dt = os.path.getmtime(file_path_name) # so use file last modified date
                 if (dt_from is not None and dt < dt_from) or (dt_to is not None and dt > dt_to):
                   include_flag = False
               if include_flag:
-                file_list.append(file_path_name) 
+                file_list.append((file_path_name, orientation)) # iFiles now list of tuples (file_name, orientation) 
   if shuffle:
     random.shuffle(file_list) # randomize pictures
   else:
@@ -99,10 +118,12 @@ def get_files(dt_from=None, dt_to=None):
   return file_list, len(file_list) # tuple of file list, number of pictures
 
 EXIF_DATID = None # this needs to be set before get_files() above can extract exif date info
+EXIF_ORIENTATION = None
 for k in ExifTags.TAGS:
   if ExifTags.TAGS[k] == 'DateTimeOriginal':
     EXIF_DATID = k
-    break
+  if ExifTags.TAGS[k] == 'Orientation':
+    EXIF_ORIENTATION = k
 
 ##############################################
 # MQTT functionality - see https://www.thedigitalpictureframe.com/
@@ -195,7 +216,7 @@ font = pi3d.Font(FONT_FILE, codepoints=CODEPOINTS, grid_size=7, shadow_radius=4.
 text = pi3d.PointText(font, CAMERA, max_chars=200, point_size=50)
 textblock = pi3d.TextBlock(x=-DISPLAY.width * 0.5 + 50, y=-DISPLAY.height * 0.4,
                            z=0.1, rot=0.0, char_count=199,
-                           text_format="{}".format(tidy_name(iFiles[next_pic_num])), size=0.99, 
+                           text_format="{}".format(tidy_name(iFiles[next_pic_num][0])), size=0.99, 
                            spacing="F", space=0.02, colour=(1.0, 1.0, 1.0, 1.0))
 text.add_text_block(textblock)
 
@@ -216,7 +237,7 @@ while DISPLAY.loop_running():
           iFiles, nFi = get_files()
           pic_num = pic_num % nFi # just in case list is severly shortened
 
-        sfg = tex_load(iFiles[pic_num])
+        sfg = tex_load(*iFiles[pic_num]) # '*' here splits tuple in two values
         next_pic_num += 1
         if next_pic_num >= nFi:
           num_run_through += 1
@@ -241,7 +262,7 @@ while DISPLAY.loop_running():
       slide.unif[os2] = 0.0
       # set the file name as the description
       if SHOWTEXT:
-        textblock.set_text(text_format="{}".format(tidy_name(iFiles[pic_num])))
+        textblock.set_text(text_format="{}".format(tidy_name(iFiles[pic_num][0])))
         text.regen()
 
     if a < 1.0:
