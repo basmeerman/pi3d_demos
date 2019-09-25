@@ -93,7 +93,7 @@ def get_files(dt_from=None, dt_to=None):
                   im = Image.open(file_path_name) # lazy operation so shouldn't load (better test though)
                   #print(filename, end="")
                   exif_data = im._getexif()
-                  print('orientation is {}'.format(exif_data[EXIF_ORIENTATION]))
+                  #print('orientation is {}'.format(exif_data[EXIF_ORIENTATION]))
                   dt = time.mktime(time.strptime(exif_data[EXIF_DATID], '%Y:%m:%d %H:%M:%S'))
                   orientation = int(exif_data[EXIF_ORIENTATION])
 		  #1 = Horizontal (normal)
